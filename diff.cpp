@@ -4,10 +4,10 @@
 #include <ctype.h>
 #include <math.h>
 #include <sys/stat.h>
+#include <assert.h>
 
 #include "buff.h"
 #include "diff.h"
-
 
 typedef struct _node
 {
@@ -28,8 +28,15 @@ struct _tree
 static int _create_node(Tree * t, Node ** node, const void * pair);
 int _tree_parse(Tree* tree, Node ** node, const char ** string);
 Tree * _tree_dump_func(Tree * tree, Node ** node, FILE * Out);
-static int _insert_tree(Tree * t, Node ** root, const void * pair);
-// void _destroy_tree(Tree * t, Node * n);
+Node * _insert_tree(Tree * t, Node ** root, const void * pair);
+void _destroy_tree(Tree * t, Node * n);
+
+Node * GetG(const char * string, int * p);
+Node * GetE(const char * string, int * p);
+Node * GetT(const char * string, int * p);
+Node * GetP(const char * string, int * p);
+Node * GetN(const char * string, int * p);
+
 
 field_t _node_count(Node * node, field_t val, field_t var);
 
@@ -70,15 +77,15 @@ int CreateNode(Tree * t, const void * pair)
     return _create_node(t, &t->root, pair);
 }
 
-static int _insert_tree(Tree * t, Node ** root, const void * pair)
+Node * _insert_tree(Tree * t, Node ** root, const void * pair)
 {
     if (!*root)
     {
-        if ((*root = (Node*) malloc(sizeof(Node))) == NULL) return -1;
+        if ((*root = (Node*) malloc(sizeof(Node))) == NULL) return NULL;
         (*root)->value = t->init ? t->init(pair) : (void*) pair;
         (*root)->right = NULL;
         (*root)->left = NULL;
-        return 1;
+        return *root;
     }
 
     if (t->cmp(pair, (*root)->value) > 0)
@@ -89,7 +96,7 @@ static int _insert_tree(Tree * t, Node ** root, const void * pair)
 
 int InsertTree(Tree * t, const void * pair)
 {
-    return _insert_tree(t, &t->root, pair);
+    return !!_insert_tree(t, &t->root, pair);
 }
 
 
@@ -249,7 +256,7 @@ int _tree_parse(Tree* tree, Node ** node, const char ** string)
 
     PRINT ("Creating a node...");
 
-    if (_insert_tree(tree, node, &field) == -1)
+    if (_insert_tree(tree, node, &field) == NULL)
         {
         PRINT ("Creating node FAILED. Return -1.");
         deep--;
@@ -311,8 +318,8 @@ int TreeParse(Tree * tree, const char * filename)
     if (!expression) return ALLOCATE_MEMORY_ERROR;
 
     const char * ptr = expression;
-
-    _tree_parse(tree, &tree->root, &ptr);
+    int pointer = 0;
+    tree->root = GetG(ptr, &pointer);
 
     if (fclose(file) == EOF) return FCLOSE_ERROR;
     free(expression);
@@ -343,6 +350,11 @@ field_t _node_count(Node * node, field_t val, field_t var)
     return val;
 }
 
+field_t CountTree(Tree * tree)
+{
+    return _node_count(tree->root, 0, 0);
+}
+
 #define DESTROY(...)                                                             \
     {                                                                            \
     fprintf(stderr, ">>> %s:%d: ", __FILE__, __LINE__);                          \
@@ -352,10 +364,7 @@ field_t _node_count(Node * node, field_t val, field_t var)
 
 void _destroy_tree(Tree * t, Node * n)
 {
-    if (!n)
-    {
-        return;
-    }
+    if (!n) return;
 
     DESTROY("SUBTREE %p value = %lg. Destroying.", n, ((Field*) n->value)->value);
 
@@ -433,5 +442,136 @@ int FindVar(Node * node)
 
     int result = FindVar(node->left);
     if (!result) result = FindVar(node->right);
+    return result;
+}
+
+
+#define SYNTAX_ERROR(exp, real)                     \
+    {                                               \
+        SyntaxError(exp, real, __func__, __LINE__); \
+    }                                               \
+
+#define PARSER(...)                                         \
+    {                                                       \
+        fprintf(stderr, ">>> %s %d: ", __func__, __LINE__); \
+        fprintf(stderr, __VA_ARGS__);                       \
+        fprintf(stderr, "\n");                              \
+    }                                                       \
+
+Field * _create_field(field_t val, enum types type)
+{
+    Field * field = (Field*) calloc(1, sizeof(Field));
+    if (!field) return NULL;
+    field->value = val;
+    field->type = type;
+    return field;
+}
+
+Node * _create_node(Field * val, Node * left, Node * right)
+{
+    Node * node = (Node*) calloc(1, sizeof(Node));
+    if (!node) return NULL;
+    node->value = val;
+
+    if (left) node->left = left;
+    if (right) node->right = right;
+    return node;
+}
+
+int SyntaxError(char exp, char real, const char * func, int line)
+{
+    fprintf(stderr, ">>> SyntaxError: <expected %c> <got %c>", exp, real);
+    assert(0);
+}
+
+Node * GetG(const char * string, int * p)
+{
+    PARSER("Got string %s", string + *p);
+    Node * result = GetE(string, p);
+    if (string[*p] != '$') SYNTAX_ERROR('$', string[*p]);
+    (*p)++;
+    return result;
+}
+
+Node * GetE(const char * string, int * p)
+{
+    PARSER("Got string %s", string + (*p));
+    Node * val1 = GetT(string, p);
+
+    while (string[(*p)] == '+' || string[(*p)] == '-')
+    {
+        PARSER("Got string %s", string + (*p));
+        int op = string[(*p)];
+
+        Field * operation = NULL;
+        if (!(operation = _create_field((field_t) op, OPER))) return NULL;
+
+        (*p)++;
+
+        Node * val2 = GetT(string, p);
+
+        if (!(val1 = _create_node(operation, val1, val2))) return NULL;
+    }
+    return val1;
+}
+
+Node * GetT(const char * string, int * p)
+{
+    PARSER("Got string %s", string + (*p));
+    Node * val1 = GetP(string, p);
+
+    while (string[(*p)] == '*' || string[(*p)] == '/')
+    {
+        int op = string[(*p)];
+
+        Field * operation = NULL;
+        if (!(operation = _create_field((field_t) op, OPER))) return NULL;
+
+        (*p)++;
+
+        Node * val2 = GetP(string, p);
+
+        if (!(val1 = _create_node(operation, val1, val2))) return NULL;
+    }
+    return val1;
+}
+
+Node * GetP(const char * string, int * p)
+{
+    PARSER("string = %s. Getting P...", string + (*p));
+    if (string[(*p)] == '(')
+    {
+        (*p)++;
+        PARSER("Got '('");
+        Node * val = GetE(string, p);
+        PARSER("Got string %s", string + (*p));
+        if (string[(*p)] != ')') SYNTAX_ERROR(')', string[(*p)]);
+        (*p)++;
+        return val;
+    }
+    else return GetN(string, p);
+}
+
+Node * GetN(const char * string, int * p)
+{
+    PARSER("Got string %s", string + (*p));
+
+    const char * old_string = string + (*p);
+
+    Field * number = NULL;
+    if (!(number = _create_field(0, NUM))) return NULL;
+
+    while (string[(*p)] >= '0' && string[(*p)] <= '9')
+    {
+        number->value = number->value * 10 + string[(*p)] - '0';
+        (*p)++;
+    }
+
+    PARSER("Got number %lg", number->value);
+
+    if ((string + (*p)) == old_string) SYNTAX_ERROR((*old_string), *string);
+
+    Node * result = NULL;
+    if (!(result = _create_node(number, NULL, NULL))) return NULL;
     return result;
 }

@@ -35,5 +35,7 @@ int main(void)
     Tree * tree = CreateTree(FieldInit, FieldCmp, free);
     TreeParse(tree, "toparse.txt");
     TreeDump(tree, "new");
+    field_t val = CountTree(tree);
+    printf("%lg", val);
     DestroyTree(tree);
 }

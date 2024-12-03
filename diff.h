@@ -61,6 +61,8 @@ int TreeParse(Tree * tree, const char * filename);
 
 Tree * TreeDump(Tree * tree, const char * FileName);
 
+field_t CountTree(Tree * tree);
+
 void DestroyTree(Tree * t);
 
 
