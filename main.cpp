@@ -35,9 +35,11 @@ int main(void)
     Tree * tree = CreateTree(FieldInit, FieldCmp, free);
     TreeParse(tree, "toparse.txt");
     TreeDump(tree, "new");
+    TexDump(tree, "tex");
 
     Tree * new_tree = DiffTree(tree);
     TreeDump(new_tree, "diff");
+    TexDump(new_tree, "tex_diff");
 
     DestroyTree(tree);
     DestroyTree(new_tree);

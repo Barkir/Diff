@@ -178,6 +178,83 @@ Tree * TreeDump(Tree * tree, const char * FileName)
     return tree;
 }
 
+char * _tex_dump_func(Tree * tree, Node ** node)
+{
+    enum types type = ((Field*)((*node)->value))->type;
+    field_t value = ((Field*)((*node)->value))->value;
+    char * oper = NULL;
+    char * number = NULL;
+    char * variable = NULL;
+    char * left = NULL;
+    char * right = NULL;
+
+    switch((int) type)
+    {
+        case NUM:
+            number = (char*) calloc(DEF_SIZE, 1);
+            sprintf(number, "%lg", value);
+            return number;
+
+        case VAR:
+            variable = (char*) calloc(DEF_SIZE, 1);
+            sprintf(variable, "%c", (int) value);
+            return variable;
+
+        case OPER:
+
+            left = _tex_dump_func(tree, &(*node)->left);
+            right = _tex_dump_func(tree, &(*node)->right);
+            char * oper = (char*) calloc(DEF_SIZE + strlen(left) + strlen(right), 1);
+
+            switch((int) value)
+            {
+                case '+':   sprintf(oper, "{%s} + {%s}", left, right);
+                            free(left);
+                            free(right);
+                            return oper;
+
+                case '-':   sprintf(oper, "{%s} - {%s}", left, right);
+                            free(left);
+                            free(right);
+                            return oper;
+
+                case '*':   sprintf(oper, "{%s} \\cdot {%s}", left, right);
+                            free(left);
+                            free(right);
+                            return oper;
+
+                case '^':   sprintf(oper, "{%s}^{%s}", left, right);
+                            free(left);
+                            free(right);
+                            return oper;
+
+                case '/':   sprintf(oper, "\\frac{%s}{%s}", left, right);
+                            free(left);
+                            free(right);
+                            return oper;
+
+                default:    return NULL;
+            }
+    }
+
+    return oper;
+}
+
+Tree * TexDump(Tree * tree, const char * filename)
+{
+    FILE * Out = fopen(filename, "wb");
+
+    fprintf(Out, "\n\\[");
+    char * expression = _tex_dump_func(tree, &tree->root);
+    fprintf(Out, expression);
+    free(expression);
+    fprintf(Out, "\\]\n");
+
+    fclose(Out);
+
+    return tree;
+}
+
 int TreeParse(Tree * tree, const char * filename)
 {
     FILE * file = fopen(filename, "rb");

@@ -63,6 +63,8 @@ int TreeParse(Tree * tree, const char * filename);
 
 Tree * TreeDump(Tree * tree, const char * FileName);
 
+Tree * TexDump(Tree * tree, const char * filename);
+
 field_t CountTree(Tree * tree);
 
 Tree * DiffTree(Tree * tree);
