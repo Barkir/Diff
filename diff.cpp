@@ -31,12 +31,30 @@ Tree * _tree_dump_func(Tree * tree, Node ** node, FILE * Out);
 Node * _insert_tree(Tree * t, Node ** root, const void * pair);
 void _destroy_tree(Tree * t, Node * n);
 
+int SyntaxError(char exp, char real, const char * func, int line);
+
 Node * GetG(const char * string, int * p);
 Node * GetE(const char * string, int * p);
 Node * GetT(const char * string, int * p);
+Node * GetPow(const char * string, int * p);
 Node * GetP(const char * string, int * p);
 Node * GetN(const char * string, int * p);
+Node * GetX(const char * string, int * p);
 
+void * DiffConst(void * node);
+void * DiffX(void * node);
+void * DiffPlus(void * node);
+void * DiffMul(void * node);
+void * DiffDiv(void * node);
+void * DiffPow(void * node);
+
+Node * _copy_branch(Node * node);
+Node * _copy_node(Node * node);
+Field * _copy_field(Field * field);
+Node * _create_node(Field * val, Node * left, Node * right);
+Field * _create_field(field_t val, enum types type, Diff diff);
+
+Node * _diff_tree(Node * node);
 
 field_t _node_count(Node * node, field_t val, field_t var);
 
@@ -160,155 +178,6 @@ Tree * TreeDump(Tree * tree, const char * FileName)
     return tree;
 }
 
-#define PRINT(...)                                                               \
-    {                                                                            \
-    fprintf(stderr, ">>> %s:%d: [%d]%*s", __FILE__, __LINE__, deep, deep*4, ""); \
-    fprintf(stderr, __VA_ARGS__);                                                \
-    fprintf(stderr, " Cur = '%.20s'...\n", *string);                             \
-    }
-
-int _tree_parse(Tree* tree, Node ** node, const char ** string)
-{
-    static int deep = 0;
-    deep++;
-
-    PRINT ("Starting...");
-
-    fprintf(stderr, "\n______________\n");
-
-    Field field = {};
-
-    PRINT ("Start skipping WS");
-
-    while (isspace(**string)) (*string)++;
-
-    PRINT ("WS skipped, searching for '('.");
-
-    if (**string == '(')
-    {
-        PRINT ("FOUND '('.");
-
-        (*string)++;
-
-        PRINT ("SKIPPED '('");
-    }
-    else
-    {
-        PRINT("NOT FOUND '('. ERROR creating node, return -1");
-        return -1;
-    }
-
-    const char * ptr = *string;
-    PRINT ("ptr = '%.20s'", ptr);
-
-    if (isdigit(*ptr))
-    {
-        PRINT ("ISDIGIT state.");
-
-        char * end = NULL;
-        field.value = strtod(ptr, &end);
-        if (!end)
-        {
-            deep--;
-            return -1;
-        }
-        (*string) = end;
-
-
-        field.type = NUM;
-
-        PRINT ("Got field = %lg. Type = NUM. ptr = '%.20s'", field.value, ptr);
-    }
-    else if (isalpha(*ptr))
-    {
-        PRINT ("ISALPHA state.");
-
-        field.value = (field_t)(*ptr);
-        field.type = VAR;
-
-        (*string)++;
-
-        PRINT ("Got field = %lg (%c). Type = VAR. ptr = '%.20s'", field.value, (int) field.value, ptr);
-    }
-    else if (*ptr == '+' || *ptr == '-' || *ptr == '*' || *ptr == '/' || *ptr == '^')
-    {
-        PRINT ("OPER state.");
-
-        field.value = (field_t)(*ptr);
-        field.type = OPER;
-
-        (*string)++;
-
-        PRINT ("Got field = %lg (%c). Type = OPER. ptr = '%.20s'", field.value, (int) field.value, ptr);
-    }
-
-    else
-        {
-        PRINT ("Terminal ELSE reached");
-
-        if (!(*ptr))
-            {
-            PRINT ("!*ptr detected. ptr-3 = '%.20s'. Return -1.", ptr-3);
-            deep--;
-            return -1;
-            }
-        }
-
-    PRINT ("Creating a node...");
-
-    if (_insert_tree(tree, node, &field) == NULL)
-        {
-        PRINT ("Creating node FAILED. Return -1.");
-        deep--;
-        return -1;
-        }
-
-    PRINT ("Created NODE [%p]: type = %d, field = %lg (%c)", *node, field.type, field.value, (int) field.value);
-
-    PRINT ("Skipping WSs before possible left subtree");
-    while (isspace(**string)) (*string)++;
-    PRINT ("WSs SKIPPED. Testing for '(' -- possible left subtree.")
-
-    if (**string == '(')
-        {
-        PRINT ("...FOUND '('. Did NOT skipped '('. Calling LEFT subtree read.");
-        _tree_parse(tree, &(*node)->left, string);
-        }
-
-    PRINT ("Now searching for WSs...");
-    while (isspace(**string)) (*string)++;
-    PRINT ("SKIPPED WSs. Checking for '(' -- possible right subtree...");
-
-    if (**string == '(')
-        {
-        PRINT ("...FOUND '('. Did NOT skipped '('. Calling RIGHT subtree read.");
-        _tree_parse (tree, &(*node)->right, string);
-        }
-
-    PRINT ("COMPLETELY read the node. Searching for ')'...");
-
-    PRINT ("Now searching for WSs...");
-    while (isspace(**string)) (*string)++;
-    PRINT ("SKIPPED WSs. Checking for ')' -- possible end of node...");
-
-    if (**string == ')')
-        {
-        (*string)++;
-
-        PRINT ("...FOUND ')' and SKIPPED. Node FINISHED. Return 0.");
-        deep--;
-        return 0;
-        }
-    else
-        {
-        (*string)++;
-
-        PRINT ("...NOT FOUND ')'!!! ERROR! Return -1.");
-        deep--;
-        return -1;
-        }
-}
-
 int TreeParse(Tree * tree, const char * filename)
 {
     FILE * file = fopen(filename, "rb");
@@ -366,7 +235,7 @@ void _destroy_tree(Tree * t, Node * n)
 {
     if (!n) return;
 
-    DESTROY("SUBTREE %p value = %lg. Destroying.", n, ((Field*) n->value)->value);
+    DESTROY("SUBTREE %p value = %lg (%c) %p. Destroying.", n, ((Field*) n->value)->value, (int)((Field*) n->value)->value, &((Field*) n->value)->value);
 
     _destroy_tree(t, n->left);
     _destroy_tree(t, n->right);
@@ -387,8 +256,8 @@ void DestroyTree(Tree * t)
 unsigned int NodeColor(Node * node)
 {
     unsigned int color = 0;
-        switch (((Field*) (node->value))->type)
-    {
+    switch (((Field*) (node->value))->type)
+        {
         case OPER:
             color = OPER_COLOR;
             break;
@@ -403,7 +272,7 @@ unsigned int NodeColor(Node * node)
 
         default:
             break;
-    }
+        }
 
     return color;
 }
@@ -446,6 +315,8 @@ int FindVar(Node * node)
 }
 
 
+// PARSER
+
 #define SYNTAX_ERROR(exp, real)                     \
     {                                               \
         SyntaxError(exp, real, __func__, __LINE__); \
@@ -458,12 +329,15 @@ int FindVar(Node * node)
         fprintf(stderr, "\n");                              \
     }                                                       \
 
-Field * _create_field(field_t val, enum types type)
+Field * _create_field(field_t val, enum types type, Diff diff)
 {
     Field * field = (Field*) calloc(1, sizeof(Field));
     if (!field) return NULL;
+
     field->value = val;
     field->type = type;
+    field->diff = diff;
+
     return field;
 }
 
@@ -476,6 +350,49 @@ Node * _create_node(Field * val, Node * left, Node * right)
     if (left) node->left = left;
     if (right) node->right = right;
     return node;
+}
+
+Field * _copy_field(Field * field)
+{
+    if (!field) return NULL;
+    Field * copy_field = (Field*) calloc(1, sizeof(Field));
+    if (!copy_field) return NULL;
+
+    copy_field->value = field->value;
+    copy_field->type = field->type;
+    copy_field->diff = field->diff;
+
+    return copy_field;
+}
+
+Node * _copy_node(Node * node)
+{
+    if (!node) return NULL;
+    PARSER("Copying node %p with value %lg...", node, ((Field*)node->value)->value);
+    Field * copy_field = _copy_field((Field*)node->value);
+    if (!copy_field) return NULL;
+    Node * copy_node = (Node*) calloc(1, sizeof(Node));
+    if (!copy_node) return NULL;
+
+    copy_node->value = copy_field;
+    PARSER("Created node with value %lg", copy_field->value);
+    if (node->left)  copy_node->left = node->left;
+    if (node->right) copy_node->right = node->right;
+
+    return copy_node;
+}
+
+Node * _copy_branch(Node * node)
+{
+    if (!node) return NULL;
+    PARSER("Copying branch %p with value %lg...", node, ((Field*)node->value)->value);
+    Node * result = _copy_node(node);
+    if (!result) return NULL;
+
+    result->left = _copy_branch(node->left);
+    result->right = _copy_branch(node->right);
+
+    return result;
 }
 
 int SyntaxError(char exp, char real, const char * func, int line)
@@ -504,7 +421,7 @@ Node * GetE(const char * string, int * p)
         int op = string[(*p)];
 
         Field * operation = NULL;
-        if (!(operation = _create_field((field_t) op, OPER))) return NULL;
+        if (!(operation = _create_field((field_t) op, OPER, DiffPlus))) return NULL;
 
         (*p)++;
 
@@ -518,14 +435,42 @@ Node * GetE(const char * string, int * p)
 Node * GetT(const char * string, int * p)
 {
     PARSER("Got string %s", string + (*p));
-    Node * val1 = GetP(string, p);
+    Node * val1 = GetPow(string, p);
 
     while (string[(*p)] == '*' || string[(*p)] == '/')
     {
         int op = string[(*p)];
 
         Field * operation = NULL;
-        if (!(operation = _create_field((field_t) op, OPER))) return NULL;
+
+        if (string[(*p)] == '*')
+            operation = _create_field((field_t) op, OPER, DiffMul);
+        else if (string[(*p)] == '/')
+            operation = _create_field((field_t) op, OPER, DiffDiv);
+
+        if (!operation) return NULL;
+
+
+        (*p)++;
+
+        Node * val2 = GetPow(string, p);
+
+        if (!(val1 = _create_node(operation, val1, val2))) return NULL;
+    }
+    return val1;
+}
+
+Node * GetPow(const char * string, int * p)
+{
+    PARSER("Got string %s", string + (*p));
+    Node * val1 = GetP(string, p);
+
+    while (string[(*p)] == '^')
+    {
+        int op = string[(*p)];
+
+        Field * operation = NULL;
+                if (!(operation = _create_field((field_t) op, OPER, DiffPow))) return NULL;
 
         (*p)++;
 
@@ -539,7 +484,7 @@ Node * GetT(const char * string, int * p)
 Node * GetP(const char * string, int * p)
 {
     PARSER("string = %s. Getting P...", string + (*p));
-    if (string[(*p)] == '(')
+    if (string[*p] == '(')
     {
         (*p)++;
         PARSER("Got '('");
@@ -549,6 +494,7 @@ Node * GetP(const char * string, int * p)
         (*p)++;
         return val;
     }
+    else if (string[(*p)] >= 'A' && string[(*p)] <= 'z') return GetX(string, p);
     else return GetN(string, p);
 }
 
@@ -559,7 +505,7 @@ Node * GetN(const char * string, int * p)
     const char * old_string = string + (*p);
 
     Field * number = NULL;
-    if (!(number = _create_field(0, NUM))) return NULL;
+    if (!(number = _create_field(0, NUM, DiffConst))) return NULL;
 
     while (string[(*p)] >= '0' && string[(*p)] <= '9')
     {
@@ -575,3 +521,299 @@ Node * GetN(const char * string, int * p)
     if (!(result = _create_node(number, NULL, NULL))) return NULL;
     return result;
 }
+
+Node * GetX(const char * string, int * p)
+{
+    PARSER("Got string %s", string + (*p));
+
+    const char * old_string = string + (*p);
+
+    Field * var = NULL;
+    if (!(var = _create_field(0, VAR, DiffX))) return NULL;
+
+    if (string[*p] >= 'A' && string[*p] <= 'z')
+    {
+        var->value = string[*p];
+        (*p)++;
+    }
+
+    if (string + (*p) == old_string) SYNTAX_ERROR(string[(*p)], *old_string);
+
+    Node * result = NULL;
+    if (!(result = _create_node(var, NULL, NULL))) return NULL;
+    return result;
+}
+
+
+// Differentiate Functions
+
+Node * _diff_tree(Node * node)
+{
+    PARSER("Calling subfunction...");
+    PARSER("left value = %lg, right value = %lg", ((Field*)node->left->value)->value, ((Field*)(node->right->value))->value);
+    Node * result = (Node*)((Field*)(node->value))->diff(node);
+    return result;
+}
+
+Tree * DiffTree(Tree * tree)
+{
+    if (!tree) return NULL;
+    if (!tree->root) return NULL;
+
+    PARSER("\n<<<DIFFERENTIATING TREE START>>>\n");
+
+    Tree * new_tree = CreateTree(tree->init, tree->cmp, tree->free);
+    PARSER("Created new tree %p...", new_tree);
+    if (!new_tree) return NULL;
+
+    new_tree->root = _diff_tree(tree->root);
+    PARSER("Differentiated tree root %p", new_tree->root);
+    if (!tree->root) return NULL;
+
+    PARSER("\n<<<DIFFERENTIATING TREE END>>>\n");
+    return new_tree;
+}
+
+void * DiffConst(void * node)
+{
+    if (!node) return NULL;
+    PARSER("<DIFFERENTIATING CONSTANT %lg.>", ((Field*)((Node*)node)->value)->value);
+
+    Field * field = _create_field(0, NUM, DiffConst);
+    if (!field) return NULL;
+
+    PARSER("Created field %p...", field);
+
+    Node * result = _create_node(field, NULL, NULL);
+    if (!result) return NULL;
+
+    PARSER("Created node %p...", result);
+
+    PARSER("<DIFFERENTIATING CONSTANT ENDED.>");
+    return (void*) result;
+}
+
+void * DiffX(void * node)
+{
+    if (!node) return NULL;
+    PARSER("<DIFFERENTIATING VARIABLE %c %p.>", (int)((Field*)((Node*)node)->value)->value, node);
+
+    Field * field = _create_field(1, NUM, DiffConst);
+    if (!field) return NULL;
+
+    PARSER("Created field %p...", field);
+
+    Node * result = _create_node(field, NULL, NULL);
+    if (!result) return NULL;
+
+    PARSER("Created node %p...", result);
+
+    PARSER("<DIFFERENTIATING VARIABLE ENDED.>");
+    return (void*)result;
+}
+
+void * DiffPlus(void * node)
+{
+    if (!node) return NULL;
+    PARSER("<DIFFERENTIATING %c.>", (int)((Field*)((Node*)node)->value)->value);
+
+    Node * diff_left = (Node*)((Field*)((Node*)node)->left->value)->diff(((Node*)node)->left);
+    if (!diff_left) return NULL;
+    PARSER("Created differentiated subnode %p...", diff_left);
+
+    Node * diff_right = (Node*)((Field*)((Node*)node)->right->value)->diff(((Node*)node)->right);
+    if (!diff_right) return NULL;
+    PARSER("Created differentiated subnode %p...", diff_right);
+
+    Node * plus = _copy_node((Node*)node);
+    PARSER("Created node plus %p", plus);
+
+    plus->left = diff_left;
+    plus->right = diff_right;
+
+
+    PARSER("<DIFFERENTIATING %c ENDED.>", (int)((Field*)((Node*)node)->value)->value);
+
+    return (void*)plus;
+
+}
+
+void * DiffMul(void * node)
+{
+    // u and v
+    Node * left_cp = _copy_branch(((Node*)node)->left);
+    if (!left_cp) return NULL;
+
+    Node * right_cp = _copy_branch(((Node*)node)->right);
+    if (!right_cp) return NULL;
+
+    // u' and v'
+
+    Node * diff_left = (Node*) ((Field*)(left_cp->value))->diff(left_cp);
+    if (!diff_left) return NULL;
+    Node * diff_right = (Node*) ((Field*)(right_cp->value))->diff(right_cp);
+    if (!diff_right) return NULL;
+
+    // '+' field
+    Field * plus = _create_field((field_t) '+', OPER, DiffPlus);
+    if (!plus) return NULL;
+
+    // '*' fields
+    Field * mul_left = _create_field((field_t) '*', OPER, DiffMul);
+    if (!mul_left) return NULL;
+
+    Field * mul_right = _create_field((field_t) '*', OPER, DiffMul);
+    if (!mul_right) return NULL;
+
+
+    // u'v and v'u
+    Node * left = _create_node(mul_left, diff_left, right_cp);
+    if (!left) return NULL;
+
+    Node * right = _create_node(mul_right, diff_right, left_cp);
+    if (!right) return NULL;
+
+    // u'v + v'u
+    Node * result = _create_node(plus, left, right);
+    if (!result) return NULL;
+
+    return (void*)result;
+
+}
+
+void * DiffDiv(void * node)
+{
+    if (!node) return NULL;
+
+    PARSER("<DIFFERENTIATING %c %p.>", (int)((Field*)(((Node*)node)->value))->value, node);
+
+    // u and v
+    if (!((Node*)node)->left) return NULL;
+    Node * left_cp = _copy_branch(((Node*)node)->left);
+    if (!left_cp) return NULL;
+    PARSER("Created copy of left node %p: %p", ((Node*)node)->left, left_cp)
+
+    if (!((Node*)node)->right) return NULL;
+    Node * right_cp = _copy_branch(((Node*)node)->right);
+    if (!right_cp) return NULL;
+    PARSER("Created copy of right node %p: %p", ((Node*)node)->right, right_cp)
+
+    PARSER("Differentiating node %p...", left_cp);
+    Node * diff_left = (Node*)((Field*)(left_cp->value))->diff(left_cp);
+    if (!diff_left) return NULL;
+    PARSER("Differentiated node %p: %p", left_cp, diff_left);
+
+    PARSER("Differentiating node %p...", right_cp);
+    Node * diff_right = (Node*)((Field*)(right_cp->value))->diff(right_cp);
+    if (!diff_right) return NULL;
+    PARSER("Differentiated node %p: %p", right_cp, diff_right);
+
+    // '-' field and two '*' fields
+    Field * minus = _create_field((field_t) '-', OPER, DiffPlus);
+    if (!minus) return NULL;
+    PARSER("Created '-' field %p", minus);
+
+    Field * mul_left = _create_field((field_t) '*', OPER, DiffMul);
+    if (!mul_left) return NULL;
+    PARSER("Created left '*' field %p", mul_left);
+
+    Field * mul_right = _create_field((field_t) '*', OPER, DiffMul);
+    if (!mul_right) return NULL;
+    PARSER("Created right '*' field %p", mul_right);
+
+    // u'v and v'u
+    Node * left = _create_node(mul_left, diff_left, right_cp);
+    if (!left) return NULL;
+    PARSER("Created left node %p with '*' field and left:%p, right:%p", left, mul_left, diff_left, right_cp);
+
+    Node * right = _create_node(mul_right, diff_right, left_cp);
+    if (!right) return NULL;
+    PARSER("Created left node %p with '*' field and left:%p, right:%p", right, mul_right, diff_right, left_cp);
+
+    // u'v - v'u
+    Node * higher = _create_node(minus, left, right);
+    if (!higher) return NULL;
+    PARSER("Created node %p with '-' field and left:%p. right:%p", higher, minus, left, right);
+
+
+    // v and field of number 2
+    Node * lower_right_cp = _copy_branch(((Node*)node)->right);
+    if (!lower_right_cp) return NULL;
+    PARSER("Created lower copy of right node %p: %p", ((Node*)node)->right, lower_right_cp)
+
+    Field * two = _create_field(2, NUM, DiffConst);
+    if (!two) return NULL;
+    PARSER("Created field %p with number 2", two);
+
+    // '^' field and v^2
+    Field * pw = _create_field((field_t) '^', OPER, DiffPow);
+    if (!pw) return NULL;
+    PARSER("Created field %p with '^'", pw);
+
+    Node * twof = _create_node(two, NULL, NULL);
+    if (!twof) return NULL;
+    PARSER("Created node %p with number 2", twof);
+    Node * lower = _create_node(pw, lower_right_cp, twof);
+    PARSER("Created node %p with field '^' and left:%p, right:%p", lower, lower_right_cp, twof);
+    if (!lower) return NULL;
+
+    // '/' field and (u'v - v'u) / (v^2)
+    Field * div = _create_field((field_t) '/', OPER, DiffDiv);
+    if (!div) return NULL;
+    PARSER("Created field %p with '/'", div);
+
+    Node * result = _create_node(div, higher, lower);
+    if (!result) return NULL;
+
+    PARSER("Created node %p with field '/' and left:%p, right:%p", result, higher, lower);
+
+    PARSER("<DIFFERENTIATING %c ENDED.>", (int)((Field*)((Node*)node)->value)->value);
+    return (void*) result;
+}
+
+void * DiffPow(void * node)
+{
+    PARSER("<DIFFERENTIATING %c, func = %p.>", (int)((Field*)((Node*)node)->value)->value, ((Field*)((Node*)node)->value)->diff);
+    PARSER("Copying node %p with value %lg and field %p...", node, ((Field*)((Node*)node)->right->value)->value, ((Node*)node)->right->value);
+
+    Field * n1 = _copy_field((Field*)((Node*)node)->right->value);
+    if (!n1) return NULL;
+
+
+    PARSER("Copying node %p with value %lg and field %p...", node, ((Field*)((Node*)node)->right->value)->value, ((Node*)node)->right->value);
+    Field * n2 = _copy_field((Field*)((Node*)node)->right->value);
+    if (!n2) return NULL;
+    n2->value -= 1;
+
+    PARSER("Copying node %p...", ((Node*)node)->left);
+    Node * x_node = _copy_node(((Node*)node)->left);
+    if (!x_node) return NULL;
+    PARSER("Copyied node %p: %p", ((Node*)node)->left, x_node);
+
+    Field * mul = _create_field((field_t) '*', OPER, DiffMul);
+    if (!mul) return NULL;
+
+    Field * pow = _create_field((field_t) '^', OPER, DiffPow);
+    if (!pow) return NULL;
+
+    Node * n1_node = _create_node(n1, NULL, NULL);
+    if (!n1_node) return NULL;
+
+    Node * n2_node = _create_node(n2, NULL, NULL);
+    if (!n2_node) return NULL;
+
+    Node * pow_node = _create_node(pow, x_node, n2_node);
+    if (!pow_node) return NULL;
+
+    Node * mul_node = _create_node(mul, n1_node, pow_node);
+    if (!mul_node) return NULL;
+
+    Node * x_diff = (Node*)((Field*)((x_node)->value))->diff(x_node);
+    Node * result = _copy_node(mul_node);
+    result->left = mul_node;
+    result->right = x_diff;
+
+    return (void*)result;
+}
+
+

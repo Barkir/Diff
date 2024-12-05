@@ -11,11 +11,13 @@ enum types
 };
 
 typedef double field_t;
+typedef void * (*Diff) (void*);
 
 typedef struct _field
 {
     enum types type;
     field_t value;
+    Diff diff;
 
 } Field;
 
@@ -62,6 +64,8 @@ int TreeParse(Tree * tree, const char * filename);
 Tree * TreeDump(Tree * tree, const char * FileName);
 
 field_t CountTree(Tree * tree);
+
+Tree * DiffTree(Tree * tree);
 
 void DestroyTree(Tree * t);
 
