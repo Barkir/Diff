@@ -1,0 +1,114 @@
+// EXPR:= TERM ( SP [+-] SP TERM)*
+// TERM:=  FACTOR ( SP [*/] SP FACTOR)*
+// FACTOR: ATOM (^ ATOM)*
+// ATOM:= FUNC | CONST | VAR | PAR
+// FUNC:= NAME '(' EXPR ')'
+// CONST:= INT | FLOAT
+// VAR:= [a-z]
+// PAR:='(' EXPR ')'
+
+
+
+int parse_expr(char** str, Node** result) {
+    Node* left;
+    char* old = *str;
+    if ( parse_term(str, &left) ) {
+        *result = left;
+        int op;
+        Node* right;
+        while ( parse_binop(str, "+-", &op) && parse_term(str, &right)) {
+            *result = mk_binop(op, result, right);
+        }
+        return 1;
+    }
+    *str = old;
+    return 0;
+}
+
+int parse_atom(char** str, Node** result) {
+    char* old = *str;
+    if ( parse_func(str, result) ||
+            parse_var(str, result) ||
+            parse_const(str, result) ||
+            parse_par(str, result)) return 1;
+    *str = old;
+    return 0;
+}
+
+int parse_binop(char** str, char* variants, int* binop) {
+    char* old =*str;
+    if ( strchr(variants, *str) ) {
+        switch(*str) {
+        case '+': *binop = PLUS; break;
+        case '-': *binop = MINUS; break;
+        ...
+
+        }
+        return 1;
+    }
+    *str = old;
+    return 0;
+}
+
+
+typedef Node* (*diffunc)(Node*)
+
+
+typedef struct _node {
+    diffunc diff;
+    int type;
+    union {
+        double fval;
+        int ival;
+        int op;
+        const char* name;
+    };
+    struct _node* left;
+    struct _node* right;
+
+} Node;
+
+
+Node* mk_const(double c) {
+    Node* n = malloc(sizeof(Node));
+    *n = {.diff = DiffConst, .type=CONST, .fval=c};
+    return n;
+}
+
+Node* mk_var(const char* name) {
+   Node* n = malloc(sizeof(Node));
+    *n = {.diff = DiffVar, .type=VAR, .name=strdup(name)};
+    return n;
+}
+
+Node* mk_binop(int binop, Node* l, Node* r ) {
+    Node* n = malloc(sizeof(Node));
+    *n = {.diff = get_diff(binop), .type=BINOP, .op=binop, .left = l, .right = r};
+    return n;
+}
+
+
+Node* DiffDiv(Node* n) {
+    return mk_binop(DIV, mk_binop(MINUS,
+                            mk_binop(MUL, clone(n->right), diff(n->left)),
+                            mk_binop(MUL, clone(n->left), diff(n->right))),
+                        mk_binop(POW,
+                            clone(n->right), mk_const(2)));
+}
+
+Node* diff(Node* z) {
+    if ( z ) {
+        return z->diff(z);
+    }
+    return NULL;
+}
+
+Node* ConstUp(Node* n) {
+    switch(n->type){
+    case BINOP:
+        if (n->op == MUL && n->right->type == CONST ) {
+            Node* x = n->right;
+            n->right = n->left;
+            n->left = x;
+        } else if ( n->op == PLUS
+}

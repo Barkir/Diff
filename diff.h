@@ -5,6 +5,7 @@ typedef struct _tree Tree;
 
 enum types
 {
+    ERROR = -1,
     OPER = 0,
     VAR = 1,
     NUM = 2
@@ -42,6 +43,8 @@ enum operations
     MUL,
     DIV,
     POW,
+    SIN,
+    COS
 };
 
 enum errors
@@ -64,6 +67,8 @@ int TreeParse(Tree * tree, const char * filename);
 Tree * TreeDump(Tree * tree, const char * FileName);
 
 Tree * TexDump(Tree * tree, const char * filename);
+
+int TreeSimplify(Tree * tree);
 
 field_t CountTree(Tree * tree);
 

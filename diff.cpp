@@ -5,9 +5,12 @@
 #include <math.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <ctype.h>
 
 #include "buff.h"
 #include "diff.h"
+
+#define DEBUG
 
 typedef struct _node
 {
@@ -32,14 +35,15 @@ Node * _insert_tree(Tree * t, Node ** root, const void * pair);
 void _destroy_tree(Tree * t, Node * n);
 
 int SyntaxError(char exp, char real, const char * func, int line);
+Node ** StringTokenize(const char * string, int * p);
 
-Node * GetG(const char * string, int * p);
-Node * GetE(const char * string, int * p);
-Node * GetT(const char * string, int * p);
-Node * GetPow(const char * string, int * p);
-Node * GetP(const char * string, int * p);
-Node * GetN(const char * string, int * p);
-Node * GetX(const char * string, int * p);
+Node * GetG(Node ** nodes, int * p);
+Node * GetE(Node ** nodes, int * p);
+Node * GetT(Node ** nodes, int * p);
+Node * GetPow(Node ** nodes, int * p);
+Node * GetP(Node ** nodes, int * p);
+Node * GetN(Node ** nodes, int * p);
+Node * GetX(Node ** nodes, int * p);
 
 void * DiffConst(void * node);
 void * DiffX(void * node);
@@ -59,7 +63,10 @@ Node * _diff_tree(Node * node);
 field_t _node_count(Node * node, field_t val, field_t var);
 
 unsigned int NodeColor(Node * node);
-const char * NodeType(Node * node);
+field_t NodeValue(Node * node);
+enum types NodeType(Node * node);
+Diff NodeDiff(Node * node);
+
 
 int FindVar(Node * node);
 
@@ -127,16 +134,16 @@ Tree * _tree_dump_func(Tree * tree, Node ** node, FILE * Out)
     if (!*node) return NULL;
 
     unsigned int color = NodeColor(*node);
-    field_t field = ((Field*)(*node)->value)->value;
+    field_t field = NodeValue(*node);
 
     switch (((Field*)(*node)->value)->type)
     {
-        case OPER:  fprintf(Out, "node%p [shape = Mrecord; label = \"{%c}\"; style = filled; fillcolor = \"#%06X\"];\n",
-                    *node, (int) field, color);
+        case OPER:  fprintf(Out, "node%p [shape = Mrecord; label = \"{%c | %p}\"; style = filled; fillcolor = \"#%06X\"];\n",
+                    *node, (int) field, *node, color);
                     break;
 
-        case VAR:   fprintf(Out, "node%p [shape = Mrecord; label = \"{%c}\"; style = filled; fillcolor = \"#%06X\"];\n",
-                    *node, (int) field, color);
+        case VAR:   fprintf(Out, "node%p [shape = Mrecord; label = \"{%c | %p}\"; style = filled; fillcolor = \"#%06X\"];\n",
+                    *node, (int) field, *node, color);
                     break;
         case NUM:   fprintf(Out, "node%p [shape = Mrecord; label = \"{%lg}\"; style = filled; fillcolor = \"#%06X\"];\n",
                     *node, field, color);
@@ -180,8 +187,8 @@ Tree * TreeDump(Tree * tree, const char * FileName)
 
 char * _tex_dump_func(Tree * tree, Node ** node)
 {
-    enum types type = ((Field*)((*node)->value))->type;
-    field_t value = ((Field*)((*node)->value))->value;
+    enum types type = NodeType(*node);
+    field_t value = NodeValue(*node);
     char * oper = NULL;
     char * number = NULL;
     char * variable = NULL;
@@ -208,17 +215,17 @@ char * _tex_dump_func(Tree * tree, Node ** node)
 
             switch((int) value)
             {
-                case '+':   sprintf(oper, "{%s} + {%s}", left, right);
+                case '+':   sprintf(oper, "({%s} + {%s})", left, right);
                             free(left);
                             free(right);
                             return oper;
 
-                case '-':   sprintf(oper, "{%s} - {%s}", left, right);
+                case '-':   sprintf(oper, "({%s} - {%s})", left, right);
                             free(left);
                             free(right);
                             return oper;
 
-                case '*':   sprintf(oper, "{%s} \\cdot {%s}", left, right);
+                case '*':   sprintf(oper, "({%s} \\cdot {%s})", left, right);
                             free(left);
                             free(right);
                             return oper;
@@ -244,16 +251,44 @@ Tree * TexDump(Tree * tree, const char * filename)
 {
     FILE * Out = fopen(filename, "wb");
 
+    fprintf(Out,    "\\documentclass[12]{article}\n"
+                    "\\usepackage{amsmath}\n"
+                    "\\usepackage{amssymb}\n"
+                    "\\usepackage{graphicx} % Required for inserting images\n"
+                    "\\usepackage[utf8]{inputenc}\n"
+                    "\\usepackage[russian]{babel}\n"
+                    "\\begin{document}\n"
+                    "\\begin{small}\n");
+
     fprintf(Out, "\n\\[");
     char * expression = _tex_dump_func(tree, &tree->root);
     fprintf(Out, expression);
-    free(expression);
+
     fprintf(Out, "\\]\n");
+    fprintf(Out,    "\\end{small}\n"
+                    "\\end{document}\n");
 
     fclose(Out);
 
+    char command[DEF_SIZE] = "";
+    sprintf(command, "pdflatex --output-directory=./tmp %s", filename);
+
+    system(command);
+
+    free(expression);
     return tree;
 }
+
+#ifdef DEBUG
+#define DESTROY(...)                                                             \
+    {                                                                            \
+    fprintf(stderr, ">>> %s:%d: ", __func__, __LINE__);                          \
+    fprintf(stderr, __VA_ARGS__);                                                \
+    fprintf(stderr, "\n");                                                       \
+    }
+#else
+#define DESTROY(...)
+#endif
 
 int TreeParse(Tree * tree, const char * filename)
 {
@@ -265,7 +300,23 @@ int TreeParse(Tree * tree, const char * filename)
 
     const char * ptr = expression;
     int pointer = 0;
-    tree->root = GetG(ptr, &pointer);
+
+    Node ** array = StringTokenize(ptr, &pointer);
+
+    printf("%p\n", (*array));
+
+    pointer = 0;
+    tree->root = GetG(array, &pointer);
+
+    pointer = 0;
+    while (array[pointer])
+    {
+        free(array[pointer]->value);
+        free(array[pointer]);
+        pointer++;
+    }
+
+    free(array);
 
     if (fclose(file) == EOF) return FCLOSE_ERROR;
     free(expression);
@@ -273,22 +324,21 @@ int TreeParse(Tree * tree, const char * filename)
     return 1;
 }
 
-field_t _node_count(Node * node, field_t val, field_t var)
+field_t _node_count(Node * node, field_t val)
 {
-    enum types type = ((Field*)node->value)->type;
-    field_t field = ((Field*) node->value)->value;
-    if (type == NUM) return ((Field*)node->value)->value;
-    if (type == VAR) return var;
+    enum types type = NodeType(node);
+    field_t field = NodeValue(node);
+    if (type == NUM) return field;
 
     if (type == OPER)
     {
         switch((int) field)
         {
-            case '+': val = _node_count(node->left, val, var) + _node_count(node->right, val, var); break;
-            case '-': val = _node_count(node->left, val, var) - _node_count(node->right, val, var); break;
-            case '*': val = _node_count(node->left, val, var) * _node_count(node->right, val, var); break;
-            case '/': val = _node_count(node->left, val, var) / _node_count(node->right, val, var); break;
-            case '^': val = pow(_node_count(node->left, val, var), _node_count(node->right, val, var)); break;
+            case '+': val = _node_count(node->left, val) + _node_count(node->right, val); break;
+            case '-': val = _node_count(node->left, val) - _node_count(node->right, val); break;
+            case '*': val = _node_count(node->left, val) * _node_count(node->right, val); break;
+            case '/': val = _node_count(node->left, val) / _node_count(node->right, val); break;
+            case '^': val = pow(_node_count(node->left, val), _node_count(node->right, val)); break;
             default: return 0;
         }
     }
@@ -298,21 +348,14 @@ field_t _node_count(Node * node, field_t val, field_t var)
 
 field_t CountTree(Tree * tree)
 {
-    return _node_count(tree->root, 0, 0);
+    return _node_count(tree->root, 0);
 }
-
-#define DESTROY(...)                                                             \
-    {                                                                            \
-    fprintf(stderr, ">>> %s:%d: ", __FILE__, __LINE__);                          \
-    fprintf(stderr, __VA_ARGS__);                                                \
-    fprintf(stderr, "\n");                                                       \
-    }
 
 void _destroy_tree(Tree * t, Node * n)
 {
     if (!n) return;
 
-    DESTROY("SUBTREE %p value = %lg (%c) %p. Destroying.", n, ((Field*) n->value)->value, (int)((Field*) n->value)->value, &((Field*) n->value)->value);
+    DESTROY("SUBTREE %p value = %lg (%c) %p. Destroying.", n, NodeValue(n), (int) NodeValue(n), ((Field*) n->value));
 
     _destroy_tree(t, n->left);
     _destroy_tree(t, n->right);
@@ -329,6 +372,27 @@ void DestroyTree(Tree * t)
     free(t);
 
 }
+
+field_t NodeValue(Node * node)
+{
+    if (!node) return NULL;
+    DESTROY("Getting node value %p %lg", node, ((Field*)(node->value))->value);
+    return ((Field*)(node->value))->value;
+}
+
+enum types NodeType(Node * node)
+{
+    if (!node) return ERROR;
+    return ((Field*)(node->value))->type;
+}
+
+Diff NodeDiff(Node * node)
+{
+    if (!node) return NULL;
+    return ((Field*)(node->value))->diff;
+}
+
+
 
 unsigned int NodeColor(Node * node)
 {
@@ -354,43 +418,128 @@ unsigned int NodeColor(Node * node)
     return color;
 }
 
-const char * NodeType(Node * node)
-{
-    const char * stype = 0;
-    enum types type = ((Field*)node->value)->type;
-
-        switch (type)
-    {
-        case OPER:
-            stype = "Operation";
-            break;
-
-        case VAR:
-            stype = "Variable";
-            break;
-
-        case NUM:
-            stype = "Number";
-            break;
-
-        default:
-            break;
-    }
-
-    return stype;
-}
-
-
 int FindVar(Node * node)
 {
     if (!node) return 0;
-    if (((Field*)(node->value))->type == VAR) return 1;
+    if (NodeType(node) == VAR) return VAR;
+
 
     int result = FindVar(node->left);
     if (!result) result = FindVar(node->right);
     return result;
 }
 
+int _need_to_simplify(Node ** node)
+{
+    // if (FindVar(*node) != VAR) return 1;
+    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->left) == 1))  return 1;
+    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->left) == 0))  return 1;
+    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->right) == 0)) return 1;
+    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->right) == 1)) return 1;
+    return 0;
+}
+
+int _tree_simplify(Tree * tree, Node ** node)
+{
+    if (!tree) return -1;
+    if (!(*node)) return -1;
+
+    if (FindVar(*node) != VAR)
+    {
+        field_t count = _node_count((*node), 0);
+        _destroy_tree(tree, (*node));
+        Field * field = _create_field(count, NUM, DiffConst);
+        if (!field) return -1;
+        Node * new_node = _create_node(field, NULL, NULL);
+        if (!new_node) return -1;
+        *node = new_node;
+    }
+
+    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->left) == 1)
+    {
+        Node * new_node = _copy_branch((*node)->right);
+        if (!new_node) return -1;
+        _destroy_tree(tree, (*node));
+        *node = new_node;
+    }
+    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->left) == 0)
+    {
+        Node * new_node = _copy_node((*node)->left);
+        if (!new_node) return -1;
+        _destroy_tree(tree, (*node));
+        *node = new_node;
+    }
+
+    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->right) == 0)
+    {
+        Node * new_node = _copy_node((*node)->right);
+        if (!new_node) return -1;
+        _destroy_tree(tree, (*node));
+        *node = new_node;
+    }
+
+    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->right) == 1)
+    {
+        Node * new_node = _copy_branch((*node)->left);
+        if (!new_node) return -1;
+        _destroy_tree(tree, (*node));
+        *node = new_node;
+    }
+    if ((int)NodeValue((*node)) == '/' && NodeValue((*node)->left) == 0)
+        {
+            Node * new_node = _copy_node((*node)->left);
+            if (!new_node) return -1;
+            _destroy_tree(tree, (*node));
+            *node = new_node;
+        }
+
+    if ((int)NodeValue((*node)) == '/' && NodeValue((*node)->right) == 0)
+        return -1;
+
+
+    if ((int)NodeValue((*node)) == '/' && NodeValue((*node)->right) == 1)
+        {
+            Node * new_node = _copy_branch((*node)->left);
+            if (!new_node) return -1;
+            _destroy_tree(tree, (*node));
+            *node = new_node;
+        }
+
+        if ((int)NodeValue((*node)) == '+' && NodeValue((*node)->left) == 0)
+        {
+            Node * new_node = _copy_branch((*node)->right);
+            if (!new_node) return -1;
+            _destroy_tree(tree, (*node));
+            *node = new_node;
+        }
+
+        if ((int)NodeValue((*node)) == '+' && NodeValue((*node)->right) == 0)
+        {
+            Node * new_node = _copy_branch((*node)->left);
+            if (!new_node) return -1;
+            _destroy_tree(tree, (*node));
+            *node = new_node;
+        }
+
+        if ((int)NodeValue((*node)) == '-' && NodeValue((*node)->right) == 0)
+        {
+            Node * new_node = _copy_branch((*node)->left);
+            if (!new_node) return -1;
+            _destroy_tree(tree, (*node));
+            *node = new_node;
+        }
+
+    if (_need_to_simplify(&(*node))) _tree_simplify(tree, &(*node));
+    if ((*node)->left && ((Field*)((*node)->left->value))->type == OPER) _tree_simplify(tree, &(*node)->left);
+    if ((*node)->right && ((Field*)((*node)->right->value))->type == OPER) _tree_simplify(tree, &(*node)->right);
+
+    return 1;
+}
+
+int TreeSimplify(Tree * tree)
+{
+    return _tree_simplify(tree, &tree->root);
+}
 
 // PARSER
 
@@ -399,12 +548,16 @@ int FindVar(Node * node)
         SyntaxError(exp, real, __func__, __LINE__); \
     }                                               \
 
-#define PARSER(...)                                         \
-    {                                                       \
-        fprintf(stderr, ">>> %s %d: ", __func__, __LINE__); \
-        fprintf(stderr, __VA_ARGS__);                       \
-        fprintf(stderr, "\n");                              \
-    }                                                       \
+#ifdef DEBUG
+#define PARSER(...)                                                             \
+    {                                                                            \
+    fprintf(stderr, ">>> %s:%d: ", __func__, __LINE__);                          \
+    fprintf(stderr, __VA_ARGS__);                                                \
+    fprintf(stderr, "\n");                                                       \
+    }
+#else
+#define PARSER(...)
+#endif
 
 Field * _create_field(field_t val, enum types type, Diff diff)
 {
@@ -478,146 +631,218 @@ int SyntaxError(char exp, char real, const char * func, int line)
     assert(0);
 }
 
-Node * GetG(const char * string, int * p)
+
+Node * _oper_token(const char * string, int * p)
 {
-    PARSER("Got string %s", string + *p);
-    Node * result = GetE(string, p);
-    if (string[*p] != '$') SYNTAX_ERROR('$', string[*p]);
+    Field * field = _create_field((field_t)string[*p], OPER, NULL);
+    if  (!field) return NULL;
+    Node * result = _create_node(field, NULL, NULL);
+    if (!result) return NULL;
     (*p)++;
     return result;
 }
 
-Node * GetE(const char * string, int * p)
+Node * _find_name(char * result)
 {
-    PARSER("Got string %s", string + (*p));
-    Node * val1 = GetT(string, p);
+    printf("Need to find name %s... ", result);
+    Field * field = _create_field((field_t) result[0], VAR, DiffX);
+    if (!field) return NULL;
+    Node * node = _create_node(field, NULL, NULL);
+    if (!node) return NULL;
+    return node;
+}
 
-    while (string[(*p)] == '+' || string[(*p)] == '-')
+Node * _name_token(const char * string, int * p)
+{
+    int start_p = *p;
+
+    while(isalpha(string[*p])) (*p)++;
+
+    char * result = (char*) calloc((*p) - start_p + 1, 1);
+    memcpy(result, &string[start_p], (*p) - start_p);
+
+    Node * name = _find_name(result);
+    free(result);
+    if (!name) return NULL;
+    return name;
+}
+
+Node * _number_token(const char * string, int * p)
+{
+    char * end = NULL;
+    field_t number = strtod(&(string[*p]), &end);
+    if (!end) return NULL;
+    *p += (int)(end - &string[*p]);
+    Field * field = _create_field(number, NUM, DiffConst);
+    if (!field) return NULL;
+    Node * num = _create_node(field, NULL, NULL);
+    if (!num) return NULL;
+    return num;
+}
+
+Node * _get_token(const char * string, int * p)
+{
+    if (string[*p] == '(' ||
+        string[*p] == ')' ||
+        string[*p] == '+' ||
+        string[*p] == '-' ||
+        string[*p] == '/' ||
+        string[*p] == '*' ||
+        string[*p] == '^')
+        {printf("operator %c! ", string[*p]); return _oper_token(string, p);}
+
+    if (isalpha(string[*p])) {printf("name %c! ", string[*p]); return _name_token(string, p);}
+
+    if (isdigit(string[*p])) {printf("number %c! ", string[*p]); return _number_token(string, p);}
+
+}
+
+Node ** StringTokenize(const char * string, int * p)
+{
+    int size = 0;
+    size_t arr_size = DEF_SIZE;
+    Node ** nodes = (Node**) calloc(arr_size, sizeof(Node*));
+    while (string[*p] != 0)
     {
-        PARSER("Got string %s", string + (*p));
-        int op = string[(*p)];
+        *(nodes + size) = _get_token(string, p);
+        printf("got node %u %p with value %lg!\n", size+1, *(nodes + size), NodeValue(*nodes));
+        size++;
+    }
+    printf("%p\n");
+    return nodes;
+}
+
+Node * GetG(Node ** nodes, int * p)
+{
+    PARSER("Got node %p", nodes[*p]);
+    Node * result = GetE(nodes, p);
+    PARSER("Got result!");
+    if (!nodes[*p]) return result;
+    if (nodes[*p]) SYNTAX_ERROR(0, NodeValue(nodes[*p]));
+    PARSER("PARSING ENDED");
+    (*p)++;
+    return result;
+}
+
+Node * GetE(Node ** nodes, int * p)
+{
+    if (!nodes[*p]) return NULL;
+    PARSER("Getting E... Got node %p", nodes[*p]);
+    Node * val1 = GetT(nodes, p);
+    if (!nodes[*p]) return val1;
+
+    while ((int)NodeValue(nodes[*p]) == '+' || (int)NodeValue(nodes[*p]) == '-')
+    {
+        PARSER("Got node %p", nodes[*p]);
+        int op = (int) NodeValue(nodes[*p]);
 
         Field * operation = NULL;
         if (!(operation = _create_field((field_t) op, OPER, DiffPlus))) return NULL;
 
         (*p)++;
+        if (!nodes[*p]) return NULL;
 
-        Node * val2 = GetT(string, p);
+        Node * val2 = GetT(nodes, p);
+        PARSER("Got val2");
 
         if (!(val1 = _create_node(operation, val1, val2))) return NULL;
     }
+    PARSER("GetE Finished");
     return val1;
 }
 
-Node * GetT(const char * string, int * p)
+Node * GetT(Node ** nodes, int * p)
 {
-    PARSER("Got string %s", string + (*p));
-    Node * val1 = GetPow(string, p);
+    if (!nodes[*p]) return NULL;
+    PARSER("Getting T... Got node %p", nodes[*p]);
+    PARSER("Getting pow in T val1..."); Node * val1 = GetPow(nodes, p);
+    if (!nodes[*p]) {PARSER("GetT Finished!"); return val1;}
 
-    while (string[(*p)] == '*' || string[(*p)] == '/')
+    while ((int)NodeValue(nodes[*p]) == '*' || (int)NodeValue(nodes[*p]) == '/')
     {
-        int op = string[(*p)];
+        int op = (int)NodeValue(nodes[*p]);
 
         Field * operation = NULL;
 
-        if (string[(*p)] == '*')
-            operation = _create_field((field_t) op, OPER, DiffMul);
-        else if (string[(*p)] == '/')
-            operation = _create_field((field_t) op, OPER, DiffDiv);
+        if (op == '*') operation = _create_field((field_t) op, OPER, DiffMul);
+        else if (op == '/') operation = _create_field((field_t) op, OPER, DiffDiv);
 
         if (!operation) return NULL;
 
 
         (*p)++;
+        if (!nodes[*p]) return val1;
 
-        Node * val2 = GetPow(string, p);
+        PARSER("Getting pow in T val2..."); Node * val2 = GetPow(nodes, p);
 
         if (!(val1 = _create_node(operation, val1, val2))) return NULL;
     }
+    PARSER("GetT Finished");
     return val1;
 }
 
-Node * GetPow(const char * string, int * p)
+Node * GetPow(Node ** nodes, int * p)
 {
-    PARSER("Got string %s", string + (*p));
-    Node * val1 = GetP(string, p);
-
-    while (string[(*p)] == '^')
+    if (!nodes[*p]) return NULL;
+    PARSER("Getting pow... Got node %p", nodes[*p]);
+    Node * val1 = GetP(nodes, p);
+    if (!nodes[*p]) {PARSER("GetPow Finished"); return val1;}
+    while ((int)NodeValue(nodes[(*p)]) == '^')
     {
-        int op = string[(*p)];
+        PARSER("Got '^'");
+        int op = (int) NodeValue(nodes[(*p)]);
 
         Field * operation = NULL;
-                if (!(operation = _create_field((field_t) op, OPER, DiffPow))) return NULL;
+        if (!(operation = _create_field((field_t) op, OPER, DiffPow))) return NULL;
 
         (*p)++;
+        if (!nodes[*p]) return val1;
 
-        Node * val2 = GetP(string, p);
+        Node * val2 = GetP(nodes, p);
 
         if (!(val1 = _create_node(operation, val1, val2))) return NULL;
     }
+    PARSER("GetPow Finished");
     return val1;
 }
 
-Node * GetP(const char * string, int * p)
+
+Node * GetP(Node ** nodes, int * p)
 {
-    PARSER("string = %s. Getting P...", string + (*p));
-    if (string[*p] == '(')
+    if (!nodes[*p]) return NULL;
+    PARSER("node = %p. Getting P...", nodes[*p]);
+    if ((int) NodeValue(nodes[*p]) == '(')
     {
         (*p)++;
         PARSER("Got '('");
-        Node * val = GetE(string, p);
-        PARSER("Got string %s", string + (*p));
-        if (string[(*p)] != ')') SYNTAX_ERROR(')', string[(*p)]);
+        Node * val = GetE(nodes, p);
+        PARSER("Got node %p", nodes[*p]);
+        if (!nodes[*p]) return val;
+        if ((int) NodeValue(nodes[(*p)]) != ')') SYNTAX_ERROR(')', (int) NodeValue(nodes[(*p)]));
+        PARSER("Got ')'");
         (*p)++;
         return val;
     }
-    else if (string[(*p)] >= 'A' && string[(*p)] <= 'z') return GetX(string, p);
-    else return GetN(string, p);
+    else if (NodeType(nodes[*p]) == VAR) return GetX(nodes, p);
+    else return GetN(nodes, p);
 }
 
-Node * GetN(const char * string, int * p)
+Node * GetN(Node ** nodes, int * p)
 {
-    PARSER("Got string %s", string + (*p));
-
-    const char * old_string = string + (*p);
-
-    Field * number = NULL;
-    if (!(number = _create_field(0, NUM, DiffConst))) return NULL;
-
-    while (string[(*p)] >= '0' && string[(*p)] <= '9')
-    {
-        number->value = number->value * 10 + string[(*p)] - '0';
-        (*p)++;
-    }
-
-    PARSER("Got number %lg", number->value);
-
-    if ((string + (*p)) == old_string) SYNTAX_ERROR((*old_string), *string);
-
-    Node * result = NULL;
-    if (!(result = _create_node(number, NULL, NULL))) return NULL;
+    if (!nodes[*p]) return NULL;
+    PARSER("Got node %p", nodes[*p]);
+    Node * result = _copy_node(nodes[*p]);
+    (*p)++;
+    if (!result) return NULL;
     return result;
 }
 
-Node * GetX(const char * string, int * p)
+Node * GetX(Node ** nodes, int * p)
 {
-    PARSER("Got string %s", string + (*p));
-
-    const char * old_string = string + (*p);
-
-    Field * var = NULL;
-    if (!(var = _create_field(0, VAR, DiffX))) return NULL;
-
-    if (string[*p] >= 'A' && string[*p] <= 'z')
-    {
-        var->value = string[*p];
-        (*p)++;
-    }
-
-    if (string + (*p) == old_string) SYNTAX_ERROR(string[(*p)], *old_string);
-
-    Node * result = NULL;
-    if (!(result = _create_node(var, NULL, NULL))) return NULL;
+    PARSER("Got node %p", nodes[*p]);
+    Node * result = _copy_node(nodes[*p]);
+    (*p)++;
+    if (!result) return NULL;
     return result;
 }
 
@@ -648,6 +873,7 @@ Tree * DiffTree(Tree * tree)
     if (!tree->root) return NULL;
 
     PARSER("\n<<<DIFFERENTIATING TREE END>>>\n");
+
     return new_tree;
 }
 
@@ -697,7 +923,7 @@ void * DiffPlus(void * node)
     Node * diff_left = (Node*)((Field*)((Node*)node)->left->value)->diff(((Node*)node)->left);
     if (!diff_left) return NULL;
     PARSER("Created differentiated subnode %p...", diff_left);
-
+    PARSER("%p ", (Node*)((Field*)((Node*)node)->right->value)->diff);
     Node * diff_right = (Node*)((Field*)((Node*)node)->right->value)->diff(((Node*)node)->right);
     if (!diff_right) return NULL;
     PARSER("Created differentiated subnode %p...", diff_right);
