@@ -41,6 +41,14 @@ int main(void)
     TreeSimplify(new_tree);
     TreeSimplify(new_tree);
     TreeSimplify(new_tree);
+    TreeSimplify(new_tree);
+    TreeSimplify(new_tree);
+    TreeSimplify(new_tree);
+    TreeSimplify(new_tree);
+    TreeSimplify(new_tree);
+    TreeSimplify(new_tree);
+    TreeSimplify(new_tree);
+    TreeSimplify(new_tree);
 
 
 

@@ -407,6 +407,19 @@ field_t CountTree(Tree * tree)
     return _node_count(tree->root, 0);
 }
 
+void _destroy_node(Node * n)
+{
+    if (!n) return;
+
+
+    _destroy_node(n->left);
+    _destroy_node(n->right);
+
+    free(n->value);
+    free(n);
+}
+
+
 void _destroy_tree(Tree * t, Node * n)
 {
     if (!n) return;
@@ -1363,8 +1376,11 @@ void * DiffLOG(void * node)
 
 void * DiffHARDPOW(void * node)
 {
+    Node * toDiff = _create_node(N_MUL, _create_node(N_FUNC(LN), _copy_branch(LEFT(node)), NULL), _copy_branch(RIGHT(node)));
+    Node * Diffed = (Node*)DiffMUL(toDiff);
+    _destroy_node(toDiff);
     return _create_node(N_MUL, _create_node(N_POW, _create_node(N_E, NULL, NULL), _create_node(N_MUL, _create_node(N_FUNC(LN), _copy_branch(LEFT(node)), NULL), _copy_branch(RIGHT(node)))),
-        (Node*)DiffMUL(_create_node(N_MUL, _create_node(N_FUNC(LN), _copy_branch(LEFT(node)), NULL), _copy_branch(RIGHT(node)))));
+        Diffed);
 }
 
 
