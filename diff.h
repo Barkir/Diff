@@ -8,7 +8,8 @@ enum types
     ERROR = -1,
     OPER = 0,
     VAR = 1,
-    NUM = 2
+    NUM = 2,
+    FUNC = 3
 };
 
 typedef double field_t;
@@ -33,18 +34,37 @@ enum colors
 {
     OPER_COLOR = 0XEFF94F,
     NUM_COLOR = 0X5656EC,
-    VAR_COLOR = 0X70Df70
+    VAR_COLOR = 0X70Df70,
+    FUNC_COLOR = 0X86E3E3
 };
 
 enum operations
 {
-    ADD,
-    SUB,
-    MUL,
-    DIV,
-    POW,
+    ADD = '+',
+    SUB = '-',
+    MUL = '*',
+    DIV = '/',
+    POW = '^',
+};
+
+enum functions
+{
     SIN,
-    COS
+    COS,
+    TG,
+    CTG,
+    SH,
+    CH,
+    TH,
+    CTH,
+    LN,
+    LOG,
+    AX,
+    EX = 'e',
+    ARCSIN,
+    ARCCOS,
+    ARCTG,
+    ARCCTG
 };
 
 enum errors

@@ -34,6 +34,8 @@ Tree * _tree_dump_func(Tree * tree, Node ** node, FILE * Out);
 Node * _insert_tree(Tree * t, Node ** root, const void * pair);
 void _destroy_tree(Tree * t, Node * n);
 
+const char * enum_to_name(int name);
+
 int SyntaxError(char exp, char real, const char * func, int line);
 Node ** StringTokenize(const char * string, int * p);
 
@@ -42,15 +44,53 @@ Node * GetE(Node ** nodes, int * p);
 Node * GetT(Node ** nodes, int * p);
 Node * GetPow(Node ** nodes, int * p);
 Node * GetP(Node ** nodes, int * p);
+Node * GetFunc(Node ** nodes, int * p);
 Node * GetN(Node ** nodes, int * p);
 Node * GetX(Node ** nodes, int * p);
 
-void * DiffConst(void * node);
+void * DiffCONST(void * node);
 void * DiffX(void * node);
-void * DiffPlus(void * node);
-void * DiffMul(void * node);
-void * DiffDiv(void * node);
-void * DiffPow(void * node);
+void * DiffPLUS(void * node);
+void * DiffMUL(void * node);
+void * DiffDIV(void * node);
+void * DiffPOW(void * node);
+void * DiffSIN(void * node);
+void * DiffCOS(void * node);
+void * DiffTG(void * node);
+void * DiffCTG(void * node);
+void * DiffSH(void * node);
+void * DiffCH(void * node);
+void * DiffTH(void * node);
+void * DiffCTH(void * node);
+void * DiffEX(void * node);
+void * DiffAX(void * node);
+void * DiffLN(void * node);
+void * DiffLOG(void * node);
+void * DiffHARDPOW(void * node);
+// void * DiffARCSIN(void * node);
+// void * DiffARCCOS(void * node);
+// void * DiffARCTG(void * node);
+// void * DiffARCCTG(void * node);
+
+static Field NameTable[DEF_SIZE]
+{
+    {.type = FUNC,      .value = SIN,       .diff = DiffSIN},
+    {.type = FUNC,      .value = COS,       .diff = DiffCOS},
+    {.type = FUNC,      .value = TG,        .diff = DiffTG},
+    {.type = FUNC,      .value = CTG,       .diff = DiffCTG},
+    {.type = FUNC,      .value = SH,        .diff = DiffSH},
+    {.type = FUNC,      .value = CH,        .diff = DiffCH},
+    {.type = FUNC,      .value = TH,        .diff = DiffTH},
+    {.type = FUNC,      .value = CTH,       .diff = DiffCTH},
+    {.type = FUNC,      .value = EX,        .diff = DiffEX},
+    {.type = FUNC,      .value = AX,        .diff = DiffAX},
+    {.type = FUNC,      .value = LN,        .diff = DiffLN},
+    {.type = FUNC,      .value = LOG,       .diff = DiffLOG},
+    // {.type = FUNC,      .value = ARCSIN,    .diff = DiffARCSIN},
+    // {.type = FUNC,      .value = ARCCOS,    .diff = DiffARCCOS},
+    // {.type = FUNC,      .value = ARCTG,     .diff = DiffARCTG},
+    // {.type = FUNC,      .value = ARCCTG,    .diff = DiffARCCTG}
+};
 
 Node * _copy_branch(Node * node);
 Node * _copy_node(Node * node);
@@ -66,6 +106,17 @@ unsigned int NodeColor(Node * node);
 field_t NodeValue(Node * node);
 enum types NodeType(Node * node);
 Diff NodeDiff(Node * node);
+
+#ifdef DEBUG
+#define DESTROY(...)                                                             \
+    {                                                                            \
+    fprintf(stderr, ">>> %s:%d: ", __func__, __LINE__);                          \
+    fprintf(stderr, __VA_ARGS__);                                                \
+    fprintf(stderr, "\n");                                                       \
+    }
+#else
+#define DESTROY(...)
+#endif
 
 
 int FindVar(Node * node);
@@ -145,8 +196,13 @@ Tree * _tree_dump_func(Tree * tree, Node ** node, FILE * Out)
         case VAR:   fprintf(Out, "node%p [shape = Mrecord; label = \"{%c | %p}\"; style = filled; fillcolor = \"#%06X\"];\n",
                     *node, (int) field, *node, color);
                     break;
-        case NUM:   fprintf(Out, "node%p [shape = Mrecord; label = \"{%lg}\"; style = filled; fillcolor = \"#%06X\"];\n",
-                    *node, field, color);
+
+        case NUM:   fprintf(Out, "node%p [shape = Mrecord; label = \"{%lg | %p}\"; style = filled; fillcolor = \"#%06X\"];\n",
+                    *node, *node, field, color);
+                    break;
+
+        case FUNC:  fprintf(Out, "node%p [shape = Mrecord; label = \"{%s | %p}\"; style = filled; fillcolor = \"#%06X\"];\n",
+                    *node, enum_to_name((int) field), *node, color);
                     break;
 
         default:    fprintf(Out, "node%p [shape = Mrecord; label = \"{}\"; style = filled; fillcolor = \"#%06X\"];\n",
@@ -192,6 +248,7 @@ char * _tex_dump_func(Tree * tree, Node ** node)
     char * oper = NULL;
     char * number = NULL;
     char * variable = NULL;
+    char * func = NULL;
     char * left = NULL;
     char * right = NULL;
 
@@ -206,6 +263,16 @@ char * _tex_dump_func(Tree * tree, Node ** node)
             variable = (char*) calloc(DEF_SIZE, 1);
             sprintf(variable, "%c", (int) value);
             return variable;
+
+        case FUNC:
+        {
+            left = _tex_dump_func(tree, &(*node)->left);
+            char * func = (char*) calloc(DEF_SIZE + strlen(left), 1);
+            DESTROY("FUNC = %d(%c), %s", (int)NodeValue((*node)->left), (int)NodeValue((*node)), enum_to_name((int)NodeValue((*node))));
+            sprintf(func, "%s(%s)", enum_to_name((int)NodeValue((*node))), left);
+            free(left);
+            return func;
+        }
 
         case OPER:
 
@@ -278,17 +345,6 @@ Tree * TexDump(Tree * tree, const char * filename)
     free(expression);
     return tree;
 }
-
-#ifdef DEBUG
-#define DESTROY(...)                                                             \
-    {                                                                            \
-    fprintf(stderr, ">>> %s:%d: ", __func__, __LINE__);                          \
-    fprintf(stderr, __VA_ARGS__);                                                \
-    fprintf(stderr, "\n");                                                       \
-    }
-#else
-#define DESTROY(...)
-#endif
 
 int TreeParse(Tree * tree, const char * filename)
 {
@@ -411,6 +467,10 @@ unsigned int NodeColor(Node * node)
             color = NUM_COLOR;
             break;
 
+        case FUNC:
+            color = FUNC_COLOR;
+            break;
+
         default:
             break;
         }
@@ -432,10 +492,10 @@ int FindVar(Node * node)
 int _need_to_simplify(Node ** node)
 {
     // if (FindVar(*node) != VAR) return 1;
-    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->left) == 1))  return 1;
-    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->left) == 0))  return 1;
-    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->right) == 0)) return 1;
-    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->right) == 1)) return 1;
+    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->left) == 1) && NodeType((*node)->left) == NUM)  return 1;
+    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->left) == 0) && NodeType((*node)->left) == NUM)  return 1;
+    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->right) == 0) && NodeType((*node)->right) == NUM) return 1;
+    if ((int)NodeValue((*node)) == '*' && (NodeValue((*node)->right) == 1) && NodeType((*node)->right) == NUM) return 1;
     return 0;
 }
 
@@ -448,21 +508,21 @@ int _tree_simplify(Tree * tree, Node ** node)
     {
         field_t count = _node_count((*node), 0);
         _destroy_tree(tree, (*node));
-        Field * field = _create_field(count, NUM, DiffConst);
+        Field * field = _create_field(count, NUM, DiffCONST);
         if (!field) return -1;
         Node * new_node = _create_node(field, NULL, NULL);
         if (!new_node) return -1;
         *node = new_node;
     }
 
-    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->left) == 1)
+    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->left) == 1 && NodeType((*node)->left) == NUM)
     {
         Node * new_node = _copy_branch((*node)->right);
         if (!new_node) return -1;
         _destroy_tree(tree, (*node));
         *node = new_node;
     }
-    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->left) == 0)
+    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->left) == 0 && NodeType((*node)->left) == NUM)
     {
         Node * new_node = _copy_node((*node)->left);
         if (!new_node) return -1;
@@ -470,7 +530,7 @@ int _tree_simplify(Tree * tree, Node ** node)
         *node = new_node;
     }
 
-    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->right) == 0)
+    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->right) == 0 && NodeType((*node)->right) == NUM)
     {
         Node * new_node = _copy_node((*node)->right);
         if (!new_node) return -1;
@@ -478,14 +538,14 @@ int _tree_simplify(Tree * tree, Node ** node)
         *node = new_node;
     }
 
-    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->right) == 1)
+    if ((int)NodeValue((*node)) == '*' && NodeValue((*node)->right) == 1 && NodeType((*node)->right) == NUM)
     {
         Node * new_node = _copy_branch((*node)->left);
         if (!new_node) return -1;
         _destroy_tree(tree, (*node));
         *node = new_node;
     }
-    if ((int)NodeValue((*node)) == '/' && NodeValue((*node)->left) == 0)
+    if ((int)NodeValue((*node)) == '/' && NodeValue((*node)->left) == 0 && NodeType((*node)->left) == NUM)
         {
             Node * new_node = _copy_node((*node)->left);
             if (!new_node) return -1;
@@ -493,11 +553,11 @@ int _tree_simplify(Tree * tree, Node ** node)
             *node = new_node;
         }
 
-    if ((int)NodeValue((*node)) == '/' && NodeValue((*node)->right) == 0)
+    if ((int)NodeValue((*node)) == '/' && NodeValue((*node)->right) == 0 && NodeType((*node)->right) == NUM)
         return -1;
 
 
-    if ((int)NodeValue((*node)) == '/' && NodeValue((*node)->right) == 1)
+    if ((int)NodeValue((*node)) == '/' && NodeValue((*node)->right) == 1 && NodeType((*node)->right) == NUM)
         {
             Node * new_node = _copy_branch((*node)->left);
             if (!new_node) return -1;
@@ -505,7 +565,7 @@ int _tree_simplify(Tree * tree, Node ** node)
             *node = new_node;
         }
 
-        if ((int)NodeValue((*node)) == '+' && NodeValue((*node)->left) == 0)
+        if ((int)NodeValue((*node)) == '+' && NodeValue((*node)->left) == 0 && NodeType((*node)->left) == NUM)
         {
             Node * new_node = _copy_branch((*node)->right);
             if (!new_node) return -1;
@@ -513,7 +573,7 @@ int _tree_simplify(Tree * tree, Node ** node)
             *node = new_node;
         }
 
-        if ((int)NodeValue((*node)) == '+' && NodeValue((*node)->right) == 0)
+        if ((int)NodeValue((*node)) == '+' && NodeValue((*node)->right) == 0 && NodeType((*node)->right) == NUM)
         {
             Node * new_node = _copy_branch((*node)->left);
             if (!new_node) return -1;
@@ -521,7 +581,7 @@ int _tree_simplify(Tree * tree, Node ** node)
             *node = new_node;
         }
 
-        if ((int)NodeValue((*node)) == '-' && NodeValue((*node)->right) == 0)
+        if ((int)NodeValue((*node)) == '-' && NodeValue((*node)->right) == 0 && NodeType((*node)->right) == NUM)
         {
             Node * new_node = _copy_branch((*node)->left);
             if (!new_node) return -1;
@@ -558,6 +618,21 @@ int TreeSimplify(Tree * tree)
 #else
 #define PARSER(...)
 #endif
+
+#define N_FUNC(NAME) _create_field((field_t)NAME, FUNC, Diff##NAME)
+
+#define N_MUL _create_field((field_t) MUL, OPER, DiffMUL)
+#define N_DIV _create_field((field_t) DIV, OPER, DiffDIV)
+#define N_ADD _create_field((field_t) ADD, OPER, DiffPLUS)
+#define N_SUB _create_field((field_t) SUB, OPER, DiffPLUS)
+#define N_POW _create_field((field_t) POW, OPER, DiffPOW)
+#define N_E   _create_field((field_t) EX, VAR, DiffAX)
+
+#define DIFF(node, todiff) (Node*)((Field*)(((Node*)node)->value))->diff((todiff))
+#define LEFT(node) ((Node*)node)->left
+#define RIGHT(node) ((Node*)node)->right
+
+#define NUM_NODE(num) _create_node(_create_field((field_t) num, NUM, DiffCONST), NULL, NULL)
 
 Field * _create_field(field_t val, enum types type, Diff diff)
 {
@@ -625,6 +700,8 @@ Node * _copy_branch(Node * node)
     return result;
 }
 
+#define SKIPSPACE while(isspace(string[*p])) (*p)++;
+
 int SyntaxError(char exp, char real, const char * func, int line)
 {
     fprintf(stderr, ">>> SyntaxError: <expected %c> <got %c>", exp, real);
@@ -634,6 +711,8 @@ int SyntaxError(char exp, char real, const char * func, int line)
 
 Node * _oper_token(const char * string, int * p)
 {
+    SKIPSPACE
+
     Field * field = _create_field((field_t)string[*p], OPER, NULL);
     if  (!field) return NULL;
     Node * result = _create_node(field, NULL, NULL);
@@ -642,10 +721,63 @@ Node * _oper_token(const char * string, int * p)
     return result;
 }
 
+Field _name_table(int name)
+{
+    Field ret = {.type = NUM, .value = -1, .diff = NULL};
+    for (int i = 0; i < DEF_SIZE; i++)
+        if (NameTable[i].value == (field_t) name) return NameTable[i];
+    return ret;
+}
+
+int _name_to_enum(char * name)
+{
+    if (strcmp(name, "sin") == 0)       return SIN;
+    if (strcmp(name, "cos") == 0)       return COS;
+    if (strcmp(name, "tg") == 0)        return TG;
+    if (strcmp(name, "ctg") == 0)       return CTG;
+    if (strcmp(name, "e") == 0)         return EX;
+    if (strcmp(name, "sh") == 0)        return SH;
+    if (strcmp(name, "ch") == 0)        return CH;
+    if (strcmp(name, "ln") == 0)        return LN;
+    if (strcmp(name, "log") == 0)       return LOG;
+    if (strcmp(name, "arcsin") == 0)    return ARCSIN;
+    if (strcmp(name, "arccos") == 0)    return ARCCOS;
+    if (strcmp(name, "arctg") == 0)     return ARCTG;
+    if (strcmp(name, "arcctg") == 0)    return ARCCTG;
+    if (strcmp(name, "e") == 0)         return EX;
+
+    return -1;
+}
+
+const char * enum_to_name(int name)
+{
+    if (name == SIN) return "sin";
+    if (name == COS) return "cos";
+    if (name == SH)  return "sh";
+    if (name == CH) return "ch";
+    if (name == TG)  return "tg";
+    if (name == LOG) return "log";
+    if (name == CTG) return "ctg";
+    if (name == LN)  return "ln";
+    if (name == ARCSIN) return "arcsin";
+    if (name == ARCCOS) return "arccos";
+    if (name == ARCTG)  return "arctg";
+    if (name == ARCCTG) return "arcctg";
+    if (name == TH)     return "th";
+    if (name == CTH)    return "cth";
+    if (name == EX)      return "e";
+
+    return "notfound";
+}
+
 Node * _find_name(char * result)
 {
     printf("Need to find name %s... ", result);
-    Field * field = _create_field((field_t) result[0], VAR, DiffX);
+    Field name = _name_table(_name_to_enum(result));
+
+    Field * field = NULL;
+    if (name.value < 0) field = _create_field((field_t) result[0], VAR, DiffX);
+    else field = _create_field(name.value, name.type, name.diff);
     if (!field) return NULL;
     Node * node = _create_node(field, NULL, NULL);
     if (!node) return NULL;
@@ -654,6 +786,7 @@ Node * _find_name(char * result)
 
 Node * _name_token(const char * string, int * p)
 {
+    SKIPSPACE
     int start_p = *p;
 
     while(isalpha(string[*p])) (*p)++;
@@ -669,11 +802,12 @@ Node * _name_token(const char * string, int * p)
 
 Node * _number_token(const char * string, int * p)
 {
+    SKIPSPACE
     char * end = NULL;
     field_t number = strtod(&(string[*p]), &end);
     if (!end) return NULL;
     *p += (int)(end - &string[*p]);
-    Field * field = _create_field(number, NUM, DiffConst);
+    Field * field = _create_field(number, NUM, DiffCONST);
     if (!field) return NULL;
     Node * num = _create_node(field, NULL, NULL);
     if (!num) return NULL;
@@ -682,6 +816,7 @@ Node * _number_token(const char * string, int * p)
 
 Node * _get_token(const char * string, int * p)
 {
+    SKIPSPACE
     if (string[*p] == '(' ||
         string[*p] == ')' ||
         string[*p] == '+' ||
@@ -699,6 +834,7 @@ Node * _get_token(const char * string, int * p)
 
 Node ** StringTokenize(const char * string, int * p)
 {
+    SKIPSPACE
     int size = 0;
     size_t arr_size = DEF_SIZE;
     Node ** nodes = (Node**) calloc(arr_size, sizeof(Node*));
@@ -737,7 +873,7 @@ Node * GetE(Node ** nodes, int * p)
         int op = (int) NodeValue(nodes[*p]);
 
         Field * operation = NULL;
-        if (!(operation = _create_field((field_t) op, OPER, DiffPlus))) return NULL;
+        if (!(operation = _create_field((field_t) op, OPER, DiffPLUS))) return NULL;
 
         (*p)++;
         if (!nodes[*p]) return NULL;
@@ -764,8 +900,8 @@ Node * GetT(Node ** nodes, int * p)
 
         Field * operation = NULL;
 
-        if (op == '*') operation = _create_field((field_t) op, OPER, DiffMul);
-        else if (op == '/') operation = _create_field((field_t) op, OPER, DiffDiv);
+        if (op == '*') operation = _create_field((field_t) op, OPER, DiffMUL);
+        else if (op == '/') operation = _create_field((field_t) op, OPER, DiffDIV);
 
         if (!operation) return NULL;
 
@@ -793,12 +929,18 @@ Node * GetPow(Node ** nodes, int * p)
         int op = (int) NodeValue(nodes[(*p)]);
 
         Field * operation = NULL;
-        if (!(operation = _create_field((field_t) op, OPER, DiffPow))) return NULL;
+        Diff diff = NULL;
+        if (NodeType(val1) == NUM) diff = DiffAX;
 
         (*p)++;
         if (!nodes[*p]) return val1;
 
         Node * val2 = GetP(nodes, p);
+
+        if (NodeType(val1) == NUM) diff = DiffAX;
+        else if (NodeType(val2) == NUM) diff = DiffPOW;
+        else diff = DiffHARDPOW;
+        if (!(operation = _create_field((field_t) op, OPER, diff))) return NULL;
 
         if (!(val1 = _create_node(operation, val1, val2))) return NULL;
     }
@@ -823,8 +965,23 @@ Node * GetP(Node ** nodes, int * p)
         (*p)++;
         return val;
     }
+
+    else if (NodeType(nodes[*p]) == FUNC) return GetFunc(nodes, p);
     else if (NodeType(nodes[*p]) == VAR) return GetX(nodes, p);
     else return GetN(nodes, p);
+}
+
+Node * GetFunc(Node ** nodes, int * p)
+{
+    if (!nodes[*p]) return NULL;
+    PARSER("Got node %p", nodes[*p]);
+    Node * result = _copy_node(nodes[*p]);
+    (*p)++;
+
+    Node * val = GetP(nodes, p);
+    if (!val) return NULL;
+    result->left = val;
+    return result;
 }
 
 Node * GetN(Node ** nodes, int * p)
@@ -852,7 +1009,7 @@ Node * GetX(Node ** nodes, int * p)
 Node * _diff_tree(Node * node)
 {
     PARSER("Calling subfunction...");
-    PARSER("left value = %lg, right value = %lg", ((Field*)node->left->value)->value, ((Field*)(node->right->value))->value);
+    // PARSER("left value = %lg, right value = %lg", ((Field*)node->left->value)->value, ((Field*)(node->right->value))->value);
     Node * result = (Node*)((Field*)(node->value))->diff(node);
     return result;
 }
@@ -877,12 +1034,12 @@ Tree * DiffTree(Tree * tree)
     return new_tree;
 }
 
-void * DiffConst(void * node)
+void * DiffCONST(void * node)
 {
     if (!node) return NULL;
     PARSER("<DIFFERENTIATING CONSTANT %lg.>", ((Field*)((Node*)node)->value)->value);
 
-    Field * field = _create_field(0, NUM, DiffConst);
+    Field * field = _create_field(0, NUM, DiffCONST);
     if (!field) return NULL;
 
     PARSER("Created field %p...", field);
@@ -901,7 +1058,7 @@ void * DiffX(void * node)
     if (!node) return NULL;
     PARSER("<DIFFERENTIATING VARIABLE %c %p.>", (int)((Field*)((Node*)node)->value)->value, node);
 
-    Field * field = _create_field(1, NUM, DiffConst);
+    Field * field = _create_field(1, NUM, DiffCONST);
     if (!field) return NULL;
 
     PARSER("Created field %p...", field);
@@ -915,7 +1072,7 @@ void * DiffX(void * node)
     return (void*)result;
 }
 
-void * DiffPlus(void * node)
+void * DiffPLUS(void * node)
 {
     if (!node) return NULL;
     PARSER("<DIFFERENTIATING %c.>", (int)((Field*)((Node*)node)->value)->value);
@@ -941,7 +1098,7 @@ void * DiffPlus(void * node)
 
 }
 
-void * DiffMul(void * node)
+void * DiffMUL(void * node)
 {
     // u and v
     Node * left_cp = _copy_branch(((Node*)node)->left);
@@ -958,14 +1115,14 @@ void * DiffMul(void * node)
     if (!diff_right) return NULL;
 
     // '+' field
-    Field * plus = _create_field((field_t) '+', OPER, DiffPlus);
+    Field * plus = _create_field((field_t) '+', OPER, DiffPLUS);
     if (!plus) return NULL;
 
     // '*' fields
-    Field * mul_left = _create_field((field_t) '*', OPER, DiffMul);
+    Field * mul_left = _create_field((field_t) '*', OPER, DiffMUL);
     if (!mul_left) return NULL;
 
-    Field * mul_right = _create_field((field_t) '*', OPER, DiffMul);
+    Field * mul_right = _create_field((field_t) '*', OPER, DiffMUL);
     if (!mul_right) return NULL;
 
 
@@ -984,7 +1141,7 @@ void * DiffMul(void * node)
 
 }
 
-void * DiffDiv(void * node)
+void * DiffDIV(void * node)
 {
     if (!node) return NULL;
 
@@ -1012,15 +1169,15 @@ void * DiffDiv(void * node)
     PARSER("Differentiated node %p: %p", right_cp, diff_right);
 
     // '-' field and two '*' fields
-    Field * minus = _create_field((field_t) '-', OPER, DiffPlus);
+    Field * minus = _create_field((field_t) '-', OPER, DiffPLUS);
     if (!minus) return NULL;
     PARSER("Created '-' field %p", minus);
 
-    Field * mul_left = _create_field((field_t) '*', OPER, DiffMul);
+    Field * mul_left = _create_field((field_t) '*', OPER, DiffMUL);
     if (!mul_left) return NULL;
     PARSER("Created left '*' field %p", mul_left);
 
-    Field * mul_right = _create_field((field_t) '*', OPER, DiffMul);
+    Field * mul_right = _create_field((field_t) '*', OPER, DiffMUL);
     if (!mul_right) return NULL;
     PARSER("Created right '*' field %p", mul_right);
 
@@ -1044,12 +1201,12 @@ void * DiffDiv(void * node)
     if (!lower_right_cp) return NULL;
     PARSER("Created lower copy of right node %p: %p", ((Node*)node)->right, lower_right_cp)
 
-    Field * two = _create_field(2, NUM, DiffConst);
+    Field * two = _create_field(2, NUM, DiffCONST);
     if (!two) return NULL;
     PARSER("Created field %p with number 2", two);
 
     // '^' field and v^2
-    Field * pw = _create_field((field_t) '^', OPER, DiffPow);
+    Field * pw = _create_field((field_t) '^', OPER, DiffPOW);
     if (!pw) return NULL;
     PARSER("Created field %p with '^'", pw);
 
@@ -1061,7 +1218,7 @@ void * DiffDiv(void * node)
     if (!lower) return NULL;
 
     // '/' field and (u'v - v'u) / (v^2)
-    Field * div = _create_field((field_t) '/', OPER, DiffDiv);
+    Field * div = _create_field((field_t) '/', OPER, DiffDIV);
     if (!div) return NULL;
     PARSER("Created field %p with '/'", div);
 
@@ -1074,7 +1231,7 @@ void * DiffDiv(void * node)
     return (void*) result;
 }
 
-void * DiffPow(void * node)
+void * DiffPOW(void * node)
 {
     PARSER("<DIFFERENTIATING %c, func = %p.>", (int)((Field*)((Node*)node)->value)->value, ((Field*)((Node*)node)->value)->diff);
     PARSER("Copying node %p with value %lg and field %p...", node, ((Field*)((Node*)node)->right->value)->value, ((Node*)node)->right->value);
@@ -1089,14 +1246,14 @@ void * DiffPow(void * node)
     n2->value -= 1;
 
     PARSER("Copying node %p...", ((Node*)node)->left);
-    Node * x_node = _copy_node(((Node*)node)->left);
+    Node * x_node = _copy_branch(((Node*)node)->left);
     if (!x_node) return NULL;
     PARSER("Copyied node %p: %p", ((Node*)node)->left, x_node);
 
-    Field * mul = _create_field((field_t) '*', OPER, DiffMul);
+    Field * mul = _create_field((field_t) '*', OPER, DiffMUL);
     if (!mul) return NULL;
 
-    Field * pow = _create_field((field_t) '^', OPER, DiffPow);
+    Field * pow = _create_field((field_t) '^', OPER, DiffPOW);
     if (!pow) return NULL;
 
     Node * n1_node = _create_node(n1, NULL, NULL);
@@ -1118,5 +1275,98 @@ void * DiffPow(void * node)
 
     return (void*)result;
 }
+
+void * DiffSIN(void * node)
+{
+    return _create_node((N_MUL),
+        _create_node(N_FUNC(COS), _copy_branch(LEFT(node)), NULL),
+        (DIFF(LEFT(node), LEFT(node))));
+}
+
+void * DiffCOS(void * node)
+{
+    return _create_node((N_MUL),
+            _create_node(N_SUB, NUM_NODE(0),
+            _create_node(N_FUNC(SIN), _copy_branch(LEFT(node)), NULL)),
+            (DIFF(LEFT(node), LEFT(node))));
+}
+
+void * DiffLN(void * node)
+{
+    return _create_node(N_MUL,
+            _create_node(N_DIV, NUM_NODE(1), _copy_branch(LEFT(node))),
+            (DIFF(LEFT(node), LEFT(node))));
+}
+
+void * DiffEX(void * node)
+{
+    return _create_node(N_MUL,
+            _copy_branch((Node*)node),
+            (DIFF(LEFT(node), LEFT(node))));
+}
+
+void * DiffTG(void * node)
+{
+    return _create_node(N_MUL,
+                        _create_node(N_DIV, NUM_NODE(1), _create_node(N_POW, _copy_branch(LEFT(node)), NUM_NODE(2))),
+                        DIFF(LEFT(node), LEFT(node)));
+}
+
+void * DiffCTG(void * node)
+{
+    return _create_node(N_MUL,
+                        (_create_node(N_DIV, _create_node(N_SUB, NUM_NODE(0), NUM_NODE(1)), _create_node(N_POW, _copy_branch(LEFT(node)), NUM_NODE(2)))),
+                        DIFF(LEFT(node), LEFT(node)));
+}
+
+void * DiffSH(void * node)
+{
+    return _create_node(N_MUL,
+            _create_node(N_FUNC(CH), _copy_branch(LEFT(node)), NULL),
+            DIFF(LEFT(node), LEFT(node)));
+}
+
+void * DiffCH(void * node)
+{
+    return _create_node(N_MUL,
+            _create_node(N_FUNC(SH), _copy_branch(LEFT(node)), NULL),
+            DIFF(LEFT(node), LEFT(node)));
+}
+
+void * DiffAX(void * node)
+{
+    return _create_node(N_MUL,
+            _create_node(N_MUL, _create_node(N_FUNC(LN), _copy_branch(LEFT(node)), NULL), _copy_branch((Node*)node)),
+            DIFF(RIGHT(node), RIGHT(node)));
+}
+
+void * DiffTH(void * node)
+{
+    return _create_node(N_MUL,
+                _create_node(N_DIV, NUM_NODE(1), _create_node(N_POW, _create_node(N_FUNC(CH), LEFT(node), NULL), NUM_NODE(2))),
+                DIFF(LEFT(node), LEFT(node)));
+}
+
+void * DiffCTH(void * node)
+{
+    return _create_node(N_MUL,
+                _create_node(N_DIV, NUM_NODE(1), _create_node(N_POW, _create_node(N_FUNC(SH), LEFT(node), NULL), NUM_NODE(2))),
+                DIFF(LEFT(node), LEFT(node)));
+}
+
+void * DiffLOG(void * node)
+{
+    return _create_node(N_MUL,
+            (_create_node(N_DIV, NUM_NODE(1), _create_node(N_MUL, _create_node(N_FUNC(LN), LEFT(node), NULL), _copy_node(RIGHT(node))))),
+            DIFF(LEFT(node), LEFT(node)));
+}
+
+void * DiffHARDPOW(void * node)
+{
+    return _create_node(N_MUL, _create_node(N_POW, _create_node(N_E, NULL, NULL), _create_node(N_MUL, _create_node(N_FUNC(LN), _copy_branch(LEFT(node)), NULL), _copy_branch(RIGHT(node)))),
+        (Node*)DiffMUL(_create_node(N_MUL, _create_node(N_FUNC(LN), _copy_branch(LEFT(node)), NULL), _copy_branch(RIGHT(node)))));
+}
+
+
 
 

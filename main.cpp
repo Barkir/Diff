@@ -34,27 +34,22 @@ int main(void)
 {
     Tree * tree = CreateTree(FieldInit, FieldCmp, free);
     TreeParse(tree, "toparse.txt");
+    TreeDump(tree, "tree");
     Tree * new_tree = DiffTree(tree);
 
     TreeSimplify(new_tree);
-    // TreeSimplify(new_tree);
-    // TreeSimplify(new_tree);
-    // TreeSimplify(new_tree);
-    // TreeSimplify(new_tree);
-    // TreeSimplify(new_tree);
-    // TreeSimplify(new_tree);
-    // TreeSimplify(new_tree);
-    // TreeSimplify(new_tree);
+    TreeSimplify(new_tree);
+    TreeSimplify(new_tree);
+    TreeSimplify(new_tree);
 
 
 
-    TreeDump(tree, "tree");
     TreeDump(new_tree, "diff");
-
+    TreeDump(tree, "tree");
 
     TexDump(tree, "tex");
     TexDump(new_tree, "tex_diff");
 
-    // DestroyTree(tree);
+    DestroyTree(tree);
     DestroyTree(new_tree);
 }
